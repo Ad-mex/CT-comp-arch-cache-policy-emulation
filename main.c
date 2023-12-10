@@ -4,6 +4,10 @@ typedef int int32;
 typedef unsigned long long tickcounter;
 typedef int32 pointer; // 32 >= ADDR_LEN
 
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+
 #define MEM_SIZE (1 << 20)
 #define FIRST_ADDRESS 0x40000
 #define ADDR_LEN 20 // 2^20 = MEM_SIZE
@@ -34,8 +38,6 @@ pointer allocate(int32 bytes) {
   cur_free += bytes;
   return cur_free;
 }
-
-#include <string.h>
 
 void read_cache_line(pointer address, void *line_address) {
   cnt += 1;   // COMMAND AND ADDRESS
@@ -68,8 +70,6 @@ typedef struct __attribute__((aligned(4))) {
 lru_cache_line lru_cache[CACHE_WAY][CACHE_SETS_COUNT];
 plru_cache_line plru_cache[CACHE_WAY][CACHE_SETS_COUNT];
 
-#include <assert.h>
-
 lru_cache_line *get_lru_line(pointer p) {
   all++; // requests to cache
   int tag = p >> (CACHE_OFFSET_LEN + CACHE_IDX_LEN);
@@ -80,10 +80,13 @@ lru_cache_line *get_lru_line(pointer p) {
         lru_cache[bank][idx].tag == tag) {
       cnt += 6;
       hit++; // syudaaaaaaaaaaaaa
+
       int old_num = lru_cache[bank][idx].lru_flags;
       lru_cache[bank][idx].lru_flags = 0;
+
       for (int bank1 = 0; bank1 < CACHE_WAY; bank1++) {
-        if (bank1 != bank && lru_cache[bank1][idx].lru_flags < old_num) {
+        if (bank1 != bank && lru_cache[bank1][idx].valid_flags != 0 &&
+            lru_cache[bank1][idx].lru_flags < old_num) {
           lru_cache[bank1][idx].lru_flags++;
         }
       }
@@ -103,7 +106,8 @@ lru_cache_line *get_lru_line(pointer p) {
 
   if (naher_nado->valid_flags != 0) {
     if (naher_nado->valid_flags == 1) {
-      write_cache_line(p >> CACHE_OFFSET_LEN, naher_nado->line);
+      write_cache_line((naher_nado->tag << CACHE_IDX_LEN) | idx,
+                       naher_nado->line);
     }
     int old_num = naher_nado->lru_flags;
     for (int bank = 0; bank < CACHE_WAY; bank++) {
@@ -140,7 +144,8 @@ plru_cache_line *get_plru_line(pointer p) {
       plru_cache[bank][idx].plru_flags = 1;
       char lol = 1;
       for (int i = 0; i < CACHE_WAY; i++) {
-        lol &= (plru_cache[i][idx].valid_flags != 0) & plru_cache[i][idx].plru_flags;
+        lol &= (plru_cache[i][idx].valid_flags != 0) &
+               plru_cache[i][idx].plru_flags;
       }
       if (lol) {
         for (int i = 0; i < CACHE_WAY; i++) {
@@ -162,14 +167,16 @@ plru_cache_line *get_plru_line(pointer p) {
   assert(naher_nado != 0);
 
   if (naher_nado->valid_flags == 1) {
-    write_cache_line(p >> CACHE_OFFSET_LEN, naher_nado->line);
+    write_cache_line((naher_nado->tag << CACHE_IDX_LEN) | idx,
+                     naher_nado->line);
   }
   naher_nado->plru_flags = 1;
   naher_nado->valid_flags = -1;
   naher_nado->tag = tag;
   char lol = 1;
   for (int i = 0; i < CACHE_WAY; i++) {
-    lol &= (plru_cache[i][idx].valid_flags != 0) & plru_cache[i][idx].plru_flags;
+    lol &=
+        (plru_cache[i][idx].valid_flags != 0) & plru_cache[i][idx].plru_flags;
   }
   if (lol) {
     for (int i = 0; i < CACHE_WAY; i++) {
@@ -232,8 +239,6 @@ void c1_write32_plru(pointer p, int32 value) {
 #define N 60
 #define K 32
 
-#include <stdio.h>
-
 unsigned long long kok = 0;
 
 void mmul(pointer a, pointer b, pointer c, char is_plru) {
@@ -294,7 +299,6 @@ void mmul(pointer a, pointer b, pointer c, char is_plru) {
       cnt++; // jump to next iteration (1 tick) if (y < M)
   }
 }
-#include <stdlib.h>
 
 int main() {
   // int8 a[M][K];
@@ -307,12 +311,12 @@ int main() {
   hit = all = cnt = 0;
   mmul(a, b, c, 0);
   int time1 = cnt;
-  double per1 = hit / (double) all * 100;
+  double per1 = hit / (double)all * 100;
 
   hit = all = cnt = 0;
   mmul(a, b, c, 1);
   int time2 = cnt;
-  double per2 = hit / (double) all * 100;
+  double per2 = hit / (double)all * 100;
 
   printf(
       "LRU:\thit perc. %3.4f%%\ttime: %d\npLRU:\thit perc. %3.4f%%\ttime: %d\n",
