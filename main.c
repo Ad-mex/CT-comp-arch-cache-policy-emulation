@@ -259,6 +259,7 @@ void mmul(pointer a, pointer b, pointer c, char is_plru) {
       int32 s = 0;
       cnt++; // initialize s
 
+      cnt++; // initialize k
       for (int k = 0; k < K;) {
 
         s += (is_plru ? c1_read8_plru : c1_read8_lru)(pa + k * sizeof(int8)) *
